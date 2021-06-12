@@ -21,23 +21,27 @@ func NewTelegram(botToken string, userId int64) *Telegram {
 	return &Telegram{bot, userId}
 }
 
-func (t *Telegram) Send(report *Report) {
+func (t *Telegram) Send(text string) {
 	if t.bot == nil {
 		return
 	}
-	msgText := ""
+	msg := tgbotapi.NewMessage(t.userId, text)
+	_, err := t.bot.Send(msg)
+	if err != nil {
+		log.Print(err)
+	}
+}
+
+func (t *Telegram) SendReport(report *Report) {
+	text := ""
 	if report.Items == nil || len(report.Items) == 0 {
 		return
 	}
 	for _, v := range report.Items {
 		if v.Status != StatusInfo {
-			msgText += string(v.Status) + " "
+			text += string(v.Status) + " "
 		}
-		msgText += v.Message + "\n"
+		text += v.Message + "\n"
 	}
-	msg := tgbotapi.NewMessage(t.userId, msgText)
-	_, err := t.bot.Send(msg)
-	if err != nil {
-		log.Print(err)
-	}
+	t.Send(text)
 }

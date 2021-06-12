@@ -20,11 +20,11 @@ func main() {
 
 	log.Print("* * *")
 	log.Print(msgStart)
-	notificator.Send(notify.NewReportSingle(notify.StatusOk, msgStart))
+	notificator.Send(msgStart)
 
 	for ; ; {
 		report := bot.Pick()
-		notificator.Send(report)
+		notificator.SendReport(report)
 		time.Sleep(timing.Approx(25*time.Hour, 20*time.Minute))
 	}
 }
