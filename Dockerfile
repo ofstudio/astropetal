@@ -7,4 +7,5 @@ RUN go build -ldflags="-s -w" -o /build/astropetal-bot ./cmd
 
 FROM alpine:latest
 COPY --from=builder /build/astropetal-bot /
+USER nobody
 CMD ["/astropetal-bot"]
