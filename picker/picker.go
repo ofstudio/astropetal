@@ -15,15 +15,16 @@ import (
 )
 
 const (
-	gardenUrl = "/app/visit"
+	gardenUrl = "/app/garden"
 	pickUrl   = "/search"
 )
 
-var floweringRe, pickedRe *regexp.Regexp
+var floweringRe, pickedRe, paginationRe *regexp.Regexp
 
 func init() {
 	floweringRe = regexp.MustCompile(`.+ flowering *`)
 	pickedRe = regexp.MustCompile(`You spot a (.+) petal lying on the ground nearby`)
+	paginationRe = regexp.MustCompile(`Next page`)
 }
 
 type Picker struct {
@@ -42,7 +43,7 @@ func (p *Picker) Pick() *notify.Report {
 	log.Print(msg)
 	report.Push(notify.StatusOk, msg)
 
-	urls, err := p.getFloweringPlants()
+	urls, err := p.floweringPlants()
 	if err != nil {
 		log.Print(err)
 		report.Push(notify.StatusErr, err.Error())
@@ -56,7 +57,7 @@ func (p *Picker) Pick() *notify.Report {
 	count := 0
 	for _, u := range urls {
 		time.Sleep(timing.Approx(10*time.Second, 5*time.Second))
-		picked, err := p.pickPetal(u)
+		picked, err := p.pickPetal(p.baseUrl + u + pickUrl)
 		if err != nil {
 			log.Print(err)
 			report.Push(notify.StatusErr, err.Error())
@@ -73,30 +74,55 @@ func (p *Picker) Pick() *notify.Report {
 	return report
 }
 
-func (p *Picker) getFloweringPlants() ([]string, error) {
-	res, err := p.getPage(p.baseUrl + gardenUrl)
+func (p *Picker) floweringPlants() ([]string, error) {
+	var result, urls []string
+	var err error
+	nextUrl := p.baseUrl + gardenUrl
+
+	for {
+		urls, nextUrl, err = p.gardenPage(nextUrl)
+		if err != nil {
+			return nil, err
+		}
+
+		result = append(result, urls...)
+		if nextUrl == "" {
+			return result, nil
+		}
+		nextUrl = p.baseUrl + nextUrl
+		time.Sleep(timing.Approx(10*time.Second, 5*time.Second))
+	}
+}
+
+func (p *Picker) gardenPage(u string) ([]string, string, error) {
+	res, err := p.getPage(u)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	//goland:noinspection GoUnhandledErrorResult
 	defer res.Body.Close()
 
-	var urls []string
+	var floweringUrls []string
+	var nextUrl string
 	err = gemini.ParseLines(res.Body, func(line gemini.Line) {
 		if line, ok := line.(gemini.LineLink); ok {
 			if floweringRe.MatchString(line.Name) {
-				urls = append(urls, line.URL)
+				floweringUrls = append(floweringUrls, line.URL)
+			}
+			if paginationRe.MatchString(line.Name) {
+				nextUrl = line.URL
 			}
 		}
 	})
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	return urls, nil
+
+	return floweringUrls, nextUrl, nil
 }
 
 func (p *Picker) pickPetal(plantUrl string) (bool, error) {
-	res, err := p.getPage(p.baseUrl + plantUrl + pickUrl)
+	res, err := p.getPage(plantUrl)
 	if err != nil {
 		return false, err
 	}
